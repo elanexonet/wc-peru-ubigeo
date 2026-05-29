@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       WC Peru Ubigeo
  * Plugin URI:        https://elanexo.digital
- * Description:       Ubigeo peruano completo para WooCommerce: Depto→Prov→Dist gestionable desde el admin, Boleta/Factura con SUNAT/RENIEC (ApisPeru), tarifas de envío por ubigeo. Compatible con Block Checkout (Gravia/Gutenmate).
- * Version:           4.0.0
+ * Description:       Ubigeo peruano completo para WooCommerce: Depto→Prov→Dist gestionable desde el admin, Boleta/Factura con SUNAT/RENIEC (ApisPeru), tarifas de envío por ubigeo. Compatible con Bloques de WordPress.
+ * Version:           4.0.1
  * Author:            Greg / El Anexo Digital
  * License:           GPL-2.0+
  * Text Domain:       wc-peru-ubigeo
@@ -13,7 +13,7 @@
  */
 defined( 'ABSPATH' ) || exit;
 
-define( 'WCPU_VERSION', '4.0.0' );
+define( 'WCPU_VERSION', '4.0.1' );
 define( 'WCPU_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'WCPU_URL',     plugin_dir_url( __FILE__ ) );
 define( 'WCPU_FILE',    __FILE__ );
