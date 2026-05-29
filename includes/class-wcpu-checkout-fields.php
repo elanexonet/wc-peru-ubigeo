@@ -35,10 +35,18 @@ class WCPU_Checkout_Fields {
         if ( ! wp_verify_nonce( $nonce, 'wcpu_nonce' ) ) {
             wp_send_json_error( 'Nonce inválido' );
         }
+        
+        /* ═══════════════════════════════════════════════════════════════
+         * FIX CRÍTICO: Asegurar que la sesión existe y está inicializada
+         * Esto es crucial para visitantes (guest checkout)
+         * ═══════════════════════════════════════════════════════════════ */
         if ( ! WC()->session ) {
             WC()->session = new WC_Session_Handler();
             WC()->session->init();
+        } elseif ( ! WC()->session->has_session() ) {
+            WC()->session->set_customer_session_cookie( true );
         }
+        
         $prov_code = sanitize_text_field( wp_unslash( $_POST['prov_code'] ?? '' ) );
         $dist_code = sanitize_text_field( wp_unslash( $_POST['dist_code'] ?? '' ) );
         WC()->session->set( 'wcpu_prov_code', $prov_code );
@@ -196,12 +204,12 @@ body.wcpu-boleta.wcpu-ce div[class*="-input"]:has([id*="doc_nombre"]) { display:
 #wcpu-btn-reniec { display:inline-flex !important; }
 body.wcpu-ce #wcpu-btn-reniec { display:none !important; }
 .wcpu-btns { display:flex; gap:10px; margin:10px 0 16px; width:100%; }
-.wcpu-btn { flex:1; padding:14px 10px; border:1px solid var(--wp--preset--color--field,#767676); border-radius:var(--wp--custom--radius--md,8px); background:var(--wp--preset--color--base,#fff); font-family:inherit; font-size:var(--wp--preset--font-size--sm,0.944rem); font-weight:500; color:var(--wp--preset--color--contrast-2,#444); cursor:pointer; transition:var(--gtm-transition,all 0.3s); text-align:center; line-height:1.3; }
+.wcpu-btn { flex:1; padding:14px 10px; border:1px solid var(--wp--preset--color--field,#767676); border-radius:var(--wp--custom--radius--md,8px); background:var(--wp--preset--color--base,#fff); font-size:14px; cursor:pointer; font-weight:500; transition:all 200ms; }
 .wcpu-btn:hover { border-color:var(--wp--preset--color--accent,#0f63e9); color:var(--wp--preset--color--accent,#0f63e9); }
 .wcpu-btn.wcpu-on { background:var(--wp--preset--color--accent,#0f63e9); border-color:var(--wp--preset--color--accent,#0f63e9); color:var(--wp--preset--color--base,#fff); font-weight:600; }
 .wcpu-api-row { display:flex !important; gap:8px; align-items:stretch; width:100%; }
 .wcpu-api-row input { flex:1; min-width:0; }
-.wcpu-api-btn { padding:0 14px; height:3em; background:var(--wp--preset--color--accent,#0f63e9); color:#fff; border:none; border-radius:var(--wp--custom--radius--md,8px); font-size:var(--wp--preset--font-size--xs,0.84rem); font-weight:600; font-family:inherit; cursor:pointer; white-space:nowrap; flex-shrink:0; display:flex; align-items:center; gap:4px; }
+.wcpu-api-btn { padding:0 14px; height:3em; background:var(--wp--preset--color--accent,#0f63e9); color:#fff; border:none; border-radius:var(--wp--custom--radius--md,8px); font-size:var(--wp--preset--font-size--2-xs,0.746rem); cursor:pointer; font-weight:600; transition:opacity 200ms; }
 .wcpu-api-btn:disabled { opacity:.5; cursor:wait; }
 .wcpu-msg { display:block; font-size:var(--wp--preset--font-size--2-xs,0.746rem); margin-top:4px; min-height:16px; }
 .wcpu-msg.ok   { color:#32873b; }
@@ -257,11 +265,35 @@ body.wcpu-ce #wcpu-btn-reniec { display:none !important; }
             .then(function(j){ cb(j.success?null:(j.data||'Error'),j.success?j.data:null); })
             .catch(function(e){ cb(e.message||'Error',null); });
     }
+    
+    /* ═══════════════════════════════════════════════════════════════════════════════
+     * FIX CRÍTICO: sendCodesToSession mejorada
+     * Ahora fuerza el recalcuado de envíos después de guardar en sesión
+     * Esto es crucial para visitantes que usan WC Blocks
+     * ═══════════════════════════════════════════════════════════════════════════════ */
     function sendCodesToSession(prov,dist){
         var fd=new FormData(); fd.append('action','wcpu_set_ubigeo_codes'); fd.append('nonce',NONCE);
         fd.append('prov_code',prov||''); fd.append('dist_code',dist||'');
-        fetch(AJAX,{method:'POST',body:fd}).catch(function(){});
+        fetch(AJAX,{method:'POST',body:fd})
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+                if(j.success){
+                    /* Forzar que WC Blocks recalcule los envíos */
+                    if(window.wp&&window.wp.data&&window.wp.data.dispatch){
+                        try{
+                            var cartStore=window.wp.data.dispatch('wc/store/cart');
+                            if(cartStore&&cartStore.updateCustomerData){
+                                cartStore.updateCustomerData();
+                            }
+                        }catch(e){
+                            console.debug('wcpu: No se pudo forzar actualización de envíos:', e);
+                        }
+                    }
+                }
+            })
+            .catch(function(e){ console.debug('wcpu: Error guardando ubigeo en sesión:', e); });
     }
+    
     function clearFormFields(target){
         if(target==='boleta'||target==='all'){ setReactVal(qs('[id*="doc_numero"]'),''); setReactVal(qs('[id*="doc_nombre"]'),''); setMsg('wcpu-dni-msg','',''); }
         if(target==='factura'||target==='all'){ setReactVal(qs('[id*="ruc"]'),''); setReactVal(qs('[id*="razon_social"]'),''); setMsg('wcpu-ruc-msg','',''); }
