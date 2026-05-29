@@ -69,18 +69,20 @@ class WCPU_Shipping_Method extends WC_Shipping_Method {
         /* Departamento: viene del state nativo de WC */
         $dep_code = isset( $destination['state'] ) ? $destination['state'] : '';
 
-        /* Provincia y Distrito: obtener sus CÓDIGOS desde la sesión
-         * El JS los guarda con data-code en el input, y los enviamos
-         * a la sesión vía AJAX cuando el cliente selecciona */
+        /* ═══════════════════════════════════════════════════════════════════════════════
+         * FIX CRÍTICO: Intentar múltiples fuentes para obtener códigos de ubigeo
+         * Esto es crucial para visitantes que pueden no tener sesión inicializada
+         * ═══════════════════════════════════════════════════════════════════════════════ */
         $prov_code = '';
         $dist_code = '';
 
-        if ( WC()->session ) {
+        /* 1️⃣ FUENTE PRIORITARIA: Sesión (para usuarios logueados y visitantes con sesión inicializada) */
+        if ( WC()->session && WC()->session->has_session() ) {
             $prov_code = (string) WC()->session->get( 'wcpu_prov_code', '' );
             $dist_code = (string) WC()->session->get( 'wcpu_dist_code', '' );
         }
 
-        /* Fallback: buscar por nombre en la BD si no tenemos códigos en sesión */
+        /* 2️⃣ FALLBACK: Buscar en customer meta (para visitantes que aún no tienen sesión) */
         if ( ! $prov_code && WC()->customer ) {
             $prov_name = (string) WC()->customer->get_billing( 'wcpu/provincia' );
             $dist_name = (string) WC()->customer->get_billing( 'wcpu/distrito' );
@@ -88,17 +90,18 @@ class WCPU_Shipping_Method extends WC_Shipping_Method {
             if ( $prov_name && $dep_code ) {
                 $prov_code = self::find_prov_code_by_name( $dep_code, $prov_name );
             }
-            if ( $dist_code === '' && $dist_name && $prov_code ) {
+            if ( ! $dist_code && $dist_name && $prov_code ) {
                 $dist_code = self::find_dist_code_by_name( $prov_code, $dist_name );
             }
         }
 
-        /* Segunda opción: desde el package destination (lo inyectamos vía filtro) */
+        /* 3️⃣ TERCERA OPCIÓN: Desde el package destination (inyectado vía filtro) */
         if ( ! $prov_code && isset( $destination['wcpu_prov_code'] ) ) {
             $prov_code = $destination['wcpu_prov_code'];
             $dist_code = isset( $destination['wcpu_dist_code'] ) ? $destination['wcpu_dist_code'] : '';
         }
 
+        /* 🔍 Buscar tarifa en la BD */
         $rate = $this->find_rate( $dep_code, $prov_code, $dist_code );
 
         if ( null === $rate ) {
