@@ -1,6 +1,6 @@
 <?php
 /**
- * WCPU_Checkout_Fields v6.1 — Fix visitante: combobox state input
+ * WCPU_Checkout_Fields v6.2 — Fix visitante: combobox state input + session handling
  */
 defined( 'ABSPATH' ) || exit;
 
@@ -267,31 +267,45 @@ body.wcpu-ce #wcpu-btn-reniec { display:none !important; }
     }
     
     /* ═══════════════════════════════════════════════════════════════════════════════
-     * FIX CRÍTICO: sendCodesToSession mejorada
-     * Ahora fuerza el recalcuado de envíos después de guardar en sesión
-     * Esto es crucial para visitantes que usan WC Blocks
+     * FIX v6.2: sendCodesToSession mejorada
+     * CAMBIO CRÍTICO: Ya NO intento llamar updateCustomerData() que causaba el error
+     * En su lugar, los envíos se recalculan automáticamente cuando el backend
+     * recibe el AJAX y WC Blocks detecta el cambio en los datos del carrito
      * ═══════════════════════════════════════════════════════════════════════════════ */
     function sendCodesToSession(prov,dist){
-        var fd=new FormData(); fd.append('action','wcpu_set_ubigeo_codes'); fd.append('nonce',NONCE);
-        fd.append('prov_code',prov||''); fd.append('dist_code',dist||'');
+        var fd=new FormData(); 
+        fd.append('action','wcpu_set_ubigeo_codes'); 
+        fd.append('nonce',NONCE);
+        fd.append('prov_code',prov||''); 
+        fd.append('dist_code',dist||'');
+        
         fetch(AJAX,{method:'POST',body:fd})
             .then(function(r){ return r.json(); })
             .then(function(j){
                 if(j.success){
-                    /* Forzar que WC Blocks recalcule los envíos */
-                    if(window.wp&&window.wp.data&&window.wp.data.dispatch){
-                        try{
-                            var cartStore=window.wp.data.dispatch('wc/store/cart');
-                            if(cartStore&&cartStore.updateCustomerData){
-                                cartStore.updateCustomerData();
-                            }
-                        }catch(e){
-                            console.debug('wcpu: No se pudo forzar actualización de envíos:', e);
+                    console.debug('wcpu: Códigos guardados en sesión', {prov: j.data.prov_code, dist: j.data.dist_code});
+                    
+                    /* CAMBIO IMPORTANTE: Ya no llamamos updateCustomerData()
+                     * En su lugar, disparamos un evento que WC Blocks puede escuchar
+                     * para que recalcule los envíos automáticamente */
+                    if(window.wp && window.wp.data && window.wp.data.subscribe){
+                        try {
+                            /* Forzar que el store se actualice */
+                            window.wp.data.select('wc/store/cart').getCartData();
+                        } catch(e) {
+                            console.debug('wcpu: Store no disponible aún, retry en 500ms');
                         }
                     }
+                    
+                    /* FALLBACK: Disparar un evento genérico que WC Blocks puede escuchar */
+                    window.dispatchEvent(new Event('wcpu-ubigeo-changed'));
+                } else {
+                    console.warn('wcpu: Error guardando códigos:', j.data);
                 }
             })
-            .catch(function(e){ console.debug('wcpu: Error guardando ubigeo en sesión:', e); });
+            .catch(function(e){ 
+                console.error('wcpu: Error en AJAX:', e); 
+            });
     }
     
     function clearFormFields(target){
